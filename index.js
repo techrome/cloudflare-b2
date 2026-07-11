@@ -247,7 +247,6 @@ export default {
                         height: PREVIEW_HEIGHT,
                         fit: "scale-down",
                         quality: PREVIEW_QUALITY,
-                        format: "auto",
                     },
                 },
             })
