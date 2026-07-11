@@ -152,13 +152,6 @@ export default {
           ? new Headers()
           : filterHeaders(request.headers, env)
 
-        // A transformed preview needs the complete original image, not a byte
-        // range. This also prevents the request from entering the range-retry
-        // branch below.
-        // if (shouldGeneratePreview) {
-        //     headers.delete("range");
-        // }
-
         // Create an S3 API client that can sign the outgoing request
         const client = new AwsClient({
             "accessKeyId": env['B2_APPLICATION_KEY_ID'],
