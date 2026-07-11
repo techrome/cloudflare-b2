@@ -148,14 +148,16 @@ export default {
         // Certain headers, such as x-real-ip, appear in the incoming request but
         // are removed from the outgoing request. If they are in the outgoing
         // signed headers, B2 can't validate the signature.
-        const headers = filterHeaders(request.headers, env);
+        const headers = shouldGeneratePreview
+          ? new Headers()
+          : filterHeaders(request.headers, env)
 
         // A transformed preview needs the complete original image, not a byte
         // range. This also prevents the request from entering the range-retry
         // branch below.
-        if (shouldGeneratePreview) {
-            headers.delete("range");
-        }
+        // if (shouldGeneratePreview) {
+        //     headers.delete("range");
+        // }
 
         // Create an S3 API client that can sign the outgoing request
         const client = new AwsClient({
