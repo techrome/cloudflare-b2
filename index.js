@@ -237,44 +237,29 @@ export default {
 
         // Send the signed request to B2. When `preview=1` was requested,
         // Cloudflare transforms the upstream image before returning it.
-        try {
-          const fetchPromise = shouldGeneratePreview
+        const fetchPromise = shouldGeneratePreview
             ? fetch(signedRequest.url, {
                 method: signedRequest.method,
                 headers: signedRequest.headers,
                 cf: {
-                  image: {
-                    width: PREVIEW_WIDTH,
-                    height: PREVIEW_HEIGHT,
-                    fit: 'scale-down',
-                    quality: PREVIEW_QUALITY,
-                  },
+                    image: {
+                        width: PREVIEW_WIDTH,
+                        height: PREVIEW_HEIGHT,
+                        fit: "scale-down",
+                        quality: PREVIEW_QUALITY,
+                        format: "auto",
+                    },
                 },
-              })
-            : fetch(signedRequest)
+            })
+            : fetch(signedRequest);
 
-          if (requestMethod === 'HEAD') {
-            const response = await fetchPromise
+        if (requestMethod === 'HEAD') {
+            const response = await fetchPromise;
             // Original request was HEAD, so return a new Response without a body
-            return createHeadResponse(response)
-          }
-
-          // Return the upstream response unchanged
-          return fetchPromise
-        } catch (error) {
-          console.error('Preview fetch failed:', error)
-
-          return new Response(
-            error instanceof Error
-              ? (error.stack ?? error.message)
-              : String(error),
-            {
-              status: 500,
-              headers: {
-                'content-type': 'text/plain; charset=utf-8',
-              },
-            },
-          )
+            return createHeadResponse(response);
         }
+
+        // Return the upstream response unchanged
+        return fetchPromise;
     },
 };
