@@ -29,6 +29,20 @@ const HTTPS_PORT = "443";
 // How many times to retry a range request where the response is missing content-range
 const RANGE_RETRY_ATTEMPTS = 3;
 
+// Image-preview configuration
+const PREVIEW_QUERY_PARAM = "preview";
+const PREVIEW_WIDTH = 320;
+const PREVIEW_HEIGHT = 320;
+const PREVIEW_QUALITY = 75;
+
+const PREVIEWABLE_IMAGE_EXTENSIONS = new Set([
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "gif",
+]);
+
 // Filter out cf-* and any other headers we don't want to include in the signature
 function filterHeaders(headers, env) {
     // Suppress irrelevant IntelliJ warning
@@ -57,6 +71,15 @@ function isListBucketRequest(env, path) {
         || (env['BUCKET_NAME'] !== "$path" && path.length === 0); // https://bucket-name.endpoint/ or https://endpoint/
 }
 
+function isPreviewableImage(pathname) {
+    const filename = pathname.split('/').pop() ?? '';
+    const extension = filename.includes('.')
+        ? filename.split('.').pop().toLowerCase()
+        : '';
+
+    return PREVIEWABLE_IMAGE_EXTENSIONS.has(extension);
+}
+
 // Supress IntelliJ's "unused default export" warning
 // noinspection JSUnusedGlobalSymbols
 export default {
@@ -70,6 +93,18 @@ export default {
         }
 
         const url = new URL(request.url);
+
+        // `preview=1` is an instruction for this Worker, not a B2 query
+        // parameter. Remove it before creating the AWS signature.
+        const previewRequested =
+            url.searchParams.get(PREVIEW_QUERY_PARAM) === "1";
+
+        url.searchParams.delete(PREVIEW_QUERY_PARAM);
+
+        // Only attempt a Cloudflare image transformation for supported image
+        // extensions. Other files continue to be served normally.
+        const shouldGeneratePreview =
+            previewRequested && isPreviewableImage(url.pathname);
 
         // Incoming protocol and port is taken from the worker's environment.
         // Local dev mode uses plain http on 8787, and it's possible to deploy
@@ -115,6 +150,13 @@ export default {
         // signed headers, B2 can't validate the signature.
         const headers = filterHeaders(request.headers, env);
 
+        // A transformed preview needs the complete original image, not a byte
+        // range. This also prevents the request from entering the range-retry
+        // branch below.
+        if (shouldGeneratePreview) {
+            headers.delete("range");
+        }
+
         // Create an S3 API client that can sign the outgoing request
         const client = new AwsClient({
             "accessKeyId": env['B2_APPLICATION_KEY_ID'],
@@ -130,9 +172,9 @@ export default {
                 // Remove leading file/ prefix from the path
                 url.pathname = path.replace(/^file\//, "");
             } else {
-                // Remove leading file/{bucket_name}/ prefix from the path 
+                // Remove leading file/{bucket_name}/ prefix from the path
                 url.pathname = path.replace(/^file\/[^/]+\//, "");
-            }            
+            }
         }
 
         // Sign the outgoing request
@@ -193,8 +235,23 @@ export default {
             return response;
         }
 
-        // Send the signed request to B2
-        const fetchPromise = fetch(signedRequest);
+        // Send the signed request to B2. When `preview=1` was requested,
+        // Cloudflare transforms the upstream image before returning it.
+        const fetchPromise = shouldGeneratePreview
+            ? fetch(signedRequest.url, {
+                method: signedRequest.method,
+                headers: signedRequest.headers,
+                cf: {
+                    image: {
+                        width: PREVIEW_WIDTH,
+                        height: PREVIEW_HEIGHT,
+                        fit: "scale-down",
+                        quality: PREVIEW_QUALITY,
+                        format: "auto",
+                    },
+                },
+            })
+            : fetch(signedRequest);
 
         if (requestMethod === 'HEAD') {
             const response = await fetchPromise;
