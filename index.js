@@ -248,6 +248,7 @@ export default {
                         fit: "scale-down",
                         quality: PREVIEW_QUALITY,
                         format: "auto",
+                        "origin-auth": "share-publicly",
                     },
                 },
             })
